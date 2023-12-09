@@ -19,6 +19,7 @@ use figment::{
     providers::{Env, Format, Toml},
     Figment,
 };
+use libwally::manifest::Realm;
 use libwally::{
     manifest::{Manifest, MANIFEST_FILE_NAME},
     package_id::PackageId,
@@ -126,7 +127,7 @@ async fn package_search(
 #[post("/v1/publish", data = "<data>")]
 async fn publish(
     storage: &State<Box<dyn StorageBackend>>,
-    search_backend: &State<RwLock<SearchBackend>>,
+    //search_backend: &State<RwLock<SearchBackend>>,
     index: &State<PackageIndex>,
     authorization: Result<WriteAccess, Error>,
     _cli_version: Result<WallyVersion, Error>,
@@ -152,7 +153,7 @@ async fn publish(
 
     index.update()?;
 
-    let manifest = get_manifest(&mut archive).status(Status::BadRequest)?;
+    let mut manifest = get_manifest(&mut archive).status(Status::BadRequest)?;
     let package_id = manifest.package_id();
 
     if !authorization.can_write_package(&package_id, &index)? {
@@ -188,15 +189,16 @@ async fn publish(
         .await
         .context("could not write package to storage backend")?;
 
+    manifest.package.realm = Realm::Shared; // Lune packages are always shared
     index
         .publish(&manifest)
         .context("could not publish package to index")?;
 
-    if let Ok(mut search_backend) = search_backend.try_write() {
+    //if let Ok(mut search_backend) = search_backend.try_write() {
         // TODO: Recrawling the whole index for each publish is very wasteful!
         // Eventually this will get too expensive and we should only add the new package.
-        search_backend.crawl_packages(&index)?;
-    }
+    //    search_backend.crawl_packages(&index)?;
+    //}
 
     Ok(Json(json!({
         "message": "Package published successfully!"
@@ -224,7 +226,9 @@ fn get_manifest<R: Read + Seek>(archive: &mut ZipArchive<R>) -> anyhow::Result<M
 }
 
 pub fn server(figment: Figment) -> rocket::Rocket<Build> {
+    println!("Reading configuration...");
     let config: Config = figment.extract().expect("could not read configuration");
+    println!("Using configuration: {:#?}", config.auth);
 
     println!("Using authentication mode: {:?}", config.auth);
 
@@ -244,7 +248,7 @@ pub fn server(figment: Figment) -> rocket::Rocket<Build> {
     let package_index = PackageIndex::new_temp(&config.index_url, config.github_token).unwrap();
 
     println!("Initializing search backend...");
-    let search_backend = SearchBackend::new(&package_index).unwrap();
+    //let search_backend = SearchBackend::new(&package_index).unwrap();
 
     rocket::custom(figment)
         .mount(
@@ -254,13 +258,13 @@ pub fn server(figment: Figment) -> rocket::Rocket<Build> {
                 package_contents,
                 publish,
                 package_info,
-                package_search,
+                //package_search,
                 cors_options,
             ],
         )
         .manage(storage_backend)
         .manage(package_index)
-        .manage(RwLock::new(search_backend))
+        //.manage(RwLock::new(search_backend))
         .attach(AdHoc::config::<Config>())
         .attach(Cors)
 }
