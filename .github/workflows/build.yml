@@ -34,6 +34,10 @@ jobs:
       with:
         submodules: true
 
+    - name: Install Rust
+      uses: ATiltedTree/setup-rust@v1.0.5 
+      with:
+        rust-version: 1.73.0
     - uses: Swatinem/rust-cache@v2
 
     - name: Build release binary
@@ -67,7 +71,8 @@ jobs:
       with:
         submodules: true
 
-    - uses: ATiltedTree/setup-rust@v1.0.5 
+    - name: Install Rust
+      uses: ATiltedTree/setup-rust@v1.0.5 
       with:
         rust-version: 1.73.0
 
@@ -106,7 +111,10 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
-
+    - name: Install Rust
+      uses: ATiltedTree/setup-rust@v1.0.5 
+      with:
+        rust-version: 1.73.0
     - uses: Swatinem/rust-cache@v2
 
     - name: Build
