@@ -22,7 +22,7 @@ name = "libwally"
 path = "src/lib.rs"
 
 [[bin]]
-name = "wally"
+name = "lune-wally"
 path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
