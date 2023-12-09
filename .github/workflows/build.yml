@@ -71,7 +71,6 @@ jobs:
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
     - uses: Swatinem/rust-cache@v2
-
     - name: Build release binary
       run: |
         source $HOME/.cargo/env
@@ -83,7 +82,7 @@ jobs:
       shell: bash
       run: |
         mkdir staging
-        cp "target/release/wally" staging/
+        cp "target/release/lune_wally" staging/
         cd staging
         zip ../release.zip *
 
