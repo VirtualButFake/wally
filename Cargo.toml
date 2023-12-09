@@ -7,15 +7,9 @@ authors = ["Lucien Greathouse <lucien@uplift.games>"]
 edition = "2018"
 
 [workspace]
-members = [
-    ".",
-    "wally-registry-backend",
-]
+members = [".", "wally-registry-backend"]
 
-default-members = [
-    ".",
-    "wally-registry-backend",
-]
+default-members = [".", "wally-registry-backend"]
 
 [lib]
 name = "libwally"

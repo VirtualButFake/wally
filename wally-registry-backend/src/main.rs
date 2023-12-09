@@ -226,9 +226,7 @@ fn get_manifest<R: Read + Seek>(archive: &mut ZipArchive<R>) -> anyhow::Result<M
 }
 
 pub fn server(figment: Figment) -> rocket::Rocket<Build> {
-    println!("Reading configuration...");
     let config: Config = figment.extract().expect("could not read configuration");
-    println!("Using configuration: {:#?}", config.auth);
 
     println!("Using authentication mode: {:?}", config.auth);
 
@@ -248,7 +246,7 @@ pub fn server(figment: Figment) -> rocket::Rocket<Build> {
     let package_index = PackageIndex::new_temp(&config.index_url, config.github_token).unwrap();
 
     println!("Initializing search backend...");
-    //let search_backend = SearchBackend::new(&package_index).unwrap();
+    let search_backend = SearchBackend::new(&package_index).unwrap();
 
     rocket::custom(figment)
         .mount(
@@ -264,7 +262,7 @@ pub fn server(figment: Figment) -> rocket::Rocket<Build> {
         )
         .manage(storage_backend)
         .manage(package_index)
-        //.manage(RwLock::new(search_backend))
+        .manage(RwLock::new(search_backend))
         .attach(AdHoc::config::<Config>())
         .attach(Cors)
 }
