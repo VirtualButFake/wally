@@ -127,7 +127,7 @@ async fn package_search(
 #[post("/v1/publish", data = "<data>")]
 async fn publish(
     storage: &State<Box<dyn StorageBackend>>,
-    //search_backend: &State<RwLock<SearchBackend>>,
+    search_backend: &State<RwLock<SearchBackend>>,
     index: &State<PackageIndex>,
     authorization: Result<WriteAccess, Error>,
     _cli_version: Result<WallyVersion, Error>,
@@ -194,11 +194,11 @@ async fn publish(
         .publish(&manifest)
         .context("could not publish package to index")?;
 
-    //if let Ok(mut search_backend) = search_backend.try_write() {
+    if let Ok(mut search_backend) = search_backend.try_write() {
         // TODO: Recrawling the whole index for each publish is very wasteful!
         // Eventually this will get too expensive and we should only add the new package.
-    //    search_backend.crawl_packages(&index)?;
-    //}
+        search_backend.crawl_packages(&index)?;
+    }
 
     Ok(Json(json!({
         "message": "Package published successfully!"
