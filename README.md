@@ -12,14 +12,7 @@ The code is not pretty (I am not a Rust developer, and I have no idea what I'm d
 
 I have hosted a registry for Lune tools at https://wally.tijne.net, which you're free to use if you want (it does have search functionality disabled, which is an issue with using local storage on Wally). Alternatively you can host your own. Setup is identical to the original Wally.
 
-
-<div align="center" width="800">
-    <img alt="Wally Logo" src="wally-logo.svg" />
-    <h1>Wally, a package manager for Roblox
-    	<br><a href="https://upliftgames-wally.statuspage.io/"><img alt="Dynamic Status Badge" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fvhs2807lh6ws.statuspage.io%2Fapi%2Fv2%2Fsummary.json&query=%24.status.description&label=Status%20"></a>
-	</h1>
-</div>
-
+--------------------------------------------------------------------------------
 
 * [Installation](#installation)
 * [Commands](#commands)
