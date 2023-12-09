@@ -12,6 +12,8 @@ The code is not pretty (I am not a Rust developer, and I have no idea what I'm d
 
 I have hosted a registry for Lune tools at https://wally.tijne.net, which you're free to use if you want (it does have search functionality disabled, which is an issue with using local storage on Wally). Alternatively you can host your own. Setup is identical to the original Wally.
 
+You can install this fork with `aftman add virtualbutfake/lune-wally`.
+
 --------------------------------------------------------------------------------
 
 * [Installation](#installation)
