@@ -67,8 +67,9 @@ jobs:
       with:
         submodules: true
 
-    - name: Install Rust
-      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - uses: ATiltedTree/setup-rust@v1.0.5 
+      with:
+        rust-version: 1.73.0
 
     - uses: Swatinem/rust-cache@v2
     - name: Build release binary
