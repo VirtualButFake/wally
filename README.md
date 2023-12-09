@@ -10,6 +10,8 @@ This fork is built for usage with Lune and adds the following features:
 
 The code is not pretty (I am not a Rust developer, and I have no idea what I'm doing)
 
+I have hosted a registry for Lune tools at https://wally.tijne.net, which you're free to use if you want (it does have search functionality disabled, which is an issue with using local storage on Wally). Alternatively you can host your own. Setup is identical to the original Wally.
+
 
 <div align="center" width="800">
     <img alt="Wally Logo" src="wally-logo.svg" />
