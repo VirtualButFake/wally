@@ -47,7 +47,7 @@ jobs:
       shell: bash
       run: |
         mkdir staging
-        cp "target/release/wally.exe" staging/
+        cp "target/release/lune-wally.exe" staging/
         cd staging
         7z a ../release.zip *
 
@@ -88,7 +88,7 @@ jobs:
       shell: bash
       run: |
         mkdir staging
-        cp "target/release/lune_wally" staging/
+        cp "target/release/lune-wally" staging/
         cd staging
         zip ../release.zip *
 
@@ -126,7 +126,7 @@ jobs:
       shell: bash
       run: |
         mkdir staging
-        cp "target/release/wally" staging/
+        cp "target/release/lune-wally" staging/
         cd staging
         zip ../release.zip *
 
