@@ -1,16 +1,21 @@
-use std::{ fmt::Display, io, path::{ Path, PathBuf }, time::Duration };
+use std::{
+    fmt::Display,
+    io::{self, Cursor},
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use anyhow::{ bail, format_err };
-use crossterm::style::{ Color, SetForegroundColor };
+use crossterm::style::{Color, SetForegroundColor};
 use fs_err as fs;
-use indicatif::{ ProgressBar, ProgressStyle };
-use indoc::{ formatdoc, indoc };
+use indicatif::{ProgressBar, ProgressStyle};
+use indoc::formatdoc;
+use zip::ZipArchive;
 
 use crate::{
     manifest::Realm,
     package_contents::PackageContents,
     package_id::PackageId,
-    package_source::{ PackageSourceMap, PackageSourceProvider },
+    package_source::{PackageSourceMap, PackageSourceProvider},
     resolution::Resolve,
 };
 
@@ -18,21 +23,15 @@ use crate::{
 pub struct InstallationContext {
     shared_dir: PathBuf,
     shared_index_dir: PathBuf,
-    shared_path: Option<String>,
     server_dir: PathBuf,
     server_index_dir: PathBuf,
-    server_path: Option<String>,
     dev_dir: PathBuf,
     dev_index_dir: PathBuf,
 }
 
 impl InstallationContext {
     /// Create a new `InstallationContext` for the given path.
-    pub fn new(
-        project_path: &Path,
-        shared_path: Option<String>,
-        server_path: Option<String>
-    ) -> Self {
+    pub fn new(project_path: &Path) -> Self {
         let shared_dir = project_path.join("packages");
         let server_dir = project_path.join("ServerPackages");
         let dev_dir = project_path.join("DevPackages");
@@ -44,10 +43,8 @@ impl InstallationContext {
         Self {
             shared_dir,
             shared_index_dir,
-            shared_path,
             server_dir,
             server_index_dir,
-            server_path,
             dev_dir,
             dev_index_dir,
         }
@@ -78,20 +75,21 @@ impl InstallationContext {
         self,
         sources: PackageSourceMap,
         root_package_id: PackageId,
-        resolved: Resolve
+        resolved: Resolve,
     ) -> anyhow::Result<()> {
         let mut handles = Vec::new();
         let resolved_copy = resolved.clone();
         let bar = ProgressBar::new((resolved_copy.activated.len() - 1) as u64).with_style(
-            ProgressStyle::with_template("{spinner:.cyan.bold} {pos}/{len} [{wide_bar:.cyan/blue}]")
-                .unwrap()
-                .tick_chars("⠁⠈⠐⠠⠄⠂ ")
-                .progress_chars("#>-")
+            ProgressStyle::with_template(
+                "{spinner:.cyan.bold} {pos}/{len} [{wide_bar:.cyan/blue}]",
+            )
+            .unwrap()
+            .tick_chars("⠁⠈⠐⠠⠄⠂ ")
+            .progress_chars("#>-"),
         );
         bar.enable_steady_tick(Duration::from_millis(100));
 
-        let runtime = tokio::runtime::Builder
-            ::new_multi_thread()
+        let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(50)
             .enable_all()
             .build()
@@ -101,34 +99,23 @@ impl InstallationContext {
             log::debug!("Installing {}...", package_id);
 
             let shared_deps = resolved.shared_dependencies.get(&package_id);
-            let server_deps = resolved.server_dependencies.get(&package_id);
-            let dev_deps = resolved.dev_dependencies.get(&package_id);
 
             // We do not need to install the root package, but we should create
             // package links for its dependencies.
             if package_id == root_package_id {
                 if let Some(deps) = shared_deps {
-                    self.write_root_package_links(Realm::Shared, deps, &resolved)?;
-                }
-
-                if let Some(deps) = server_deps {
-                    self.write_root_package_links(Realm::Shared, deps, &resolved)?;
-                }
-
-                if let Some(deps) = dev_deps {
-                    self.write_root_package_links(Realm::Shared, deps, &resolved)?;
+                    self.write_root_package_links(Realm::Shared, deps, &resolved, &sources)?;
                 }
             } else {
+                // leaving this here for now, but we should probably remove it
                 if let Some(deps) = shared_deps {
-                    self.write_package_links(&package_id, Realm::Shared, deps, &resolved)?;
-                }
-
-                if let Some(deps) = server_deps {
-                    self.write_package_links(&package_id, Realm::Shared, deps, &resolved)?;
-                }
-
-                if let Some(deps) = dev_deps {
-                    self.write_package_links(&package_id, Realm::Shared, deps, &resolved)?;
+                    self.write_package_links(
+                        &package_id,
+                        Realm::Shared,
+                        deps,
+                        &resolved,
+                        &sources,
+                    )?;
                 }
 
                 let source_registry = resolved_copy.metadata[&package_id].source_registry.clone();
@@ -140,7 +127,7 @@ impl InstallationContext {
                     let package_source = source_copy.get(&source_registry).unwrap();
                     let contents = package_source.download_package(&package_id)?;
                     b.println(
-                        format!(
+                    format!(
                             "{} Downloaded {}{}",
                             SetForegroundColor(Color::DarkGreen),
                             SetForegroundColor(Color::Reset),
@@ -158,7 +145,9 @@ impl InstallationContext {
         let num_packages = handles.len();
 
         for handle in handles {
-            runtime.block_on(handle).expect("Package failed to be installed.")?;
+            runtime
+                .block_on(handle)
+                .expect("Package failed to be installed.")?;
         }
 
         bar.finish_and_clear();
@@ -168,92 +157,33 @@ impl InstallationContext {
     }
 
     /// Contents of a package-to-package link within the same index.
-    fn link_sibling_same_index(&self, id: &PackageId) -> String {
+    fn link_sibling_same_index(&self, id: &PackageId, suffix: Option<&str>) -> String {
         formatdoc!(
             r#"
-            return require("../../{full_name}")
+            return require("../../{full_name}{suffix}")
             "#,
-            full_name = package_id_file_name(id)
+            full_name = package_id_file_name(id),
+            suffix = suffix.unwrap_or("")
         )
     }
 
     /// Contents of a root-to-package link within the same index.
-    fn link_root_same_index(&self, id: &PackageId) -> String {
+    fn link_root_same_index(&self, id: &PackageId, suffix: Option<&str>) -> String {
         formatdoc!(
             r#"
-            return require("_index/{full_name}")
+            return require("_index/{full_name}{suffix}")
             "#,
-            full_name = package_id_file_name(id)
+            full_name = package_id_file_name(id),
+            suffix = suffix.unwrap_or("")
         )
-    }
-
-    /// Contents of a link into the shared index from outside the shared index.
-    fn link_shared_index(&self, id: &PackageId) -> anyhow::Result<String> {
-        let shared_path = self.shared_path.as_ref().ok_or_else(|| {
-            format_err!(
-                indoc! {
-                    r#"
-                A server or dev dependency is depending on a shared dependency.
-                To link these packages correctly you must declare where shared
-                packages are placed in the roblox datamodel in your wally.toml.
-                
-                This typically looks like:
-
-                [place]
-                shared-packages = "game.ReplicatedStorage.Packages"
-            "#
-                }
-            )
-        })?;
-
-        let contents = formatdoc!(
-            r#"
-            return require({packages}._Index["{full_name}"]["{short_name}"])
-            "#,
-            packages = shared_path,
-            full_name = package_id_file_name(id),
-            short_name = id.name().name()
-        );
-
-        Ok(contents)
-    }
-
-    /// Contents of a link into the server index from outside the server index.
-    fn link_server_index(&self, id: &PackageId) -> anyhow::Result<String> {
-        let server_path = self.server_path.as_ref().ok_or_else(|| {
-            format_err!(
-                indoc! {
-                    r#"
-                A dev dependency is depending on a server dependency.
-                To link these packages correctly you must declare where server
-                packages are placed in the roblox datamodel in your wally.toml.
-                
-                This typically looks like:
-
-                [place]
-                server-packages = "game.ServerScriptService.Packages"
-            "#
-                }
-            )
-        })?;
-
-        let contents = formatdoc!(
-            r#"
-            return require({packages}._Index["{full_name}"]["{short_name}"])
-            "#,
-            packages = server_path,
-            full_name = package_id_file_name(id),
-            short_name = id.name().name()
-        );
-
-        Ok(contents)
     }
 
     fn write_root_package_links<'a, K: Display>(
         &self,
         root_realm: Realm,
         dependencies: impl IntoIterator<Item = (K, &'a PackageId)>,
-        resolved: &Resolve
+        resolved: &Resolve,
+        sources: &PackageSourceMap,
     ) -> anyhow::Result<()> {
         log::debug!("Writing root package links");
 
@@ -267,10 +197,31 @@ impl InstallationContext {
         fs::create_dir_all(base_path)?;
 
         for (dep_name, dep_package_id) in dependencies {
-            let dependencies_realm = resolved.metadata.get(dep_package_id).unwrap().origin_realm;
             let path = base_path.join(format!("{}.lua", dep_name));
 
-            let contents = self.link_root_same_index(dep_package_id);
+            let resolved_copy = resolved.clone();
+            let source_registry = resolved_copy.metadata[&dep_package_id]
+                .source_registry
+                .clone();
+            let source_copy = sources.clone();
+            let package_source = source_copy.get(&source_registry).unwrap();
+            let file = package_source.download_package(&dep_package_id)?;
+            let archive = ZipArchive::new(Cursor::new(file.data()))?;
+
+            // check if this archive contains either init.luau, init.lua, src/init.luau or src/init.lua, in that order.
+            let mut suffix = None;
+
+            for file_name in archive.file_names() {
+                if file_name == "init.luau" || file_name == "init.lua" {
+                    suffix = Some("");
+                    break;
+                } else if file_name == "src/init.luau" || file_name == "src/init.lua" {
+                    suffix = Some("/src");
+                    // don't break here, we want to prioritize files in the root of the archive
+                }
+            }
+
+            let contents = self.link_root_same_index(dep_package_id, suffix);
 
             log::trace!("Writing {}", path.display());
             fs::write(path, contents)?;
@@ -284,7 +235,8 @@ impl InstallationContext {
         package_id: &PackageId,
         package_realm: Realm,
         dependencies: impl IntoIterator<Item = (K, &'a PackageId)>,
-        resolved: &Resolve
+        resolved: &Resolve,
+        sources: &PackageSourceMap,
     ) -> anyhow::Result<()> {
         log::debug!("Writing package links for {}", package_id);
 
@@ -299,11 +251,34 @@ impl InstallationContext {
         log::trace!("Creating directory {}", base_path.display());
         fs::create_dir_all(&base_path)?;
 
+        let resolved_copy = resolved.clone();
+        let source_registry = resolved_copy.metadata[&package_id].source_registry.clone();
+        let source_copy = sources.clone();
+        let package_source = source_copy.get(&source_registry).unwrap();
+
         for (dep_name, dep_package_id) in dependencies {
             fs::create_dir_all(&base_path.join("packages"))?;
             let path = base_path.join("packages").join(format!("{}.lua", dep_name));
 
-            let contents = self.link_sibling_same_index(dep_package_id);
+            // download each package, check whether the init.luau is located in the root or in a folder called /src
+            let file = package_source.download_package(&dep_package_id)?;
+
+            let archive = ZipArchive::new(Cursor::new(file.data()))?;
+
+            // check if this archive contains either init.luau, init.lua, src/init.luau or src/init.lua, in that order.
+            let mut suffix = None;
+
+            for file_name in archive.file_names() {
+                if file_name == "init.luau" || file_name == "init.lua" {
+                    suffix = Some("");
+                    break;
+                } else if file_name == "src/init.luau" || file_name == "src/init.lua" {
+                    suffix = Some("/src");
+                    // don't break here, we want to prioritize files in the root of the archive
+                }
+            }
+
+            let contents = self.link_sibling_same_index(dep_package_id, suffix);
 
             log::trace!("Writing {}", path.display());
             fs::write(path, contents)?;
@@ -335,5 +310,10 @@ impl InstallationContext {
 
 /// Creates a suitable name for use in file paths that refer to this package.
 fn package_id_file_name(id: &PackageId) -> String {
-    format!("{}_{}@{}", id.name().scope(), id.name().name(), id.version())
+    format!(
+        "{}_{}@{}",
+        id.name().scope(),
+        id.name().name(),
+        id.version()
+    )
 }

@@ -10,6 +10,7 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::io::{Cursor, Read, Seek};
 use std::sync::RwLock;
@@ -190,6 +191,16 @@ async fn publish(
         .context("could not write package to storage backend")?;
 
     manifest.package.realm = Realm::Shared; // Lune packages are always shared
+
+    // combine shared-dependencies, dependencies, and dev-dependencies into one list
+    let mut dependencies = manifest.dependencies.clone();
+    dependencies.extend(manifest.server_dependencies.clone());
+    dependencies.extend(manifest.dev_dependencies.clone());
+
+    manifest.dependencies = dependencies;
+    manifest.server_dependencies = BTreeMap::new();
+    manifest.dev_dependencies = BTreeMap::new();
+
     index
         .publish(&manifest)
         .context("could not publish package to index")?;
@@ -256,7 +267,7 @@ pub fn server(figment: Figment) -> rocket::Rocket<Build> {
                 package_contents,
                 publish,
                 package_info,
-                //package_search,
+                package_search,
                 cors_options,
             ],
         )

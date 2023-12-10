@@ -92,9 +92,7 @@ impl InstallSubcommand {
         ));
         let root_package_id = PackageId::new(manifest.package.name, manifest.package.version);
         let installation = InstallationContext::new(
-            &self.project_path,
-            manifest.place.shared_packages,
-            manifest.place.server_packages,
+            &self.project_path
         );
 
         installation.clean()?;

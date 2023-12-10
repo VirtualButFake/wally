@@ -5,3 +5,4 @@
 *.snap.new
 
 *.DS_Store
+.vscode

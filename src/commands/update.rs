@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::convert::TryInto;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -113,9 +112,7 @@ impl UpdateSubcommand {
 
         let root_package_id = manifest.package_id();
         let installation_context = InstallationContext::new(
-            &self.project_path,
-            manifest.place.shared_packages,
-            manifest.place.server_packages,
+            &self.project_path
         );
 
         progress.set_message(format!(

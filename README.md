@@ -2,7 +2,7 @@
 
 This fork is built for usage with Lune and adds the following features:
 - `wally install` now by default installs into a lowercase `packages` directory.
-- Realms have been completely removed - all packages are by default shared. The registry automatically sets the realm to `shared`. This is because Lune does not have a server/client distinction.
+- Realms have been completely removed - all packages are by default shared. The registry automatically sets the realm to `shared`. This is because Lune does not have a server/client distinction
 - The `packages` directory is now located inside of the package, so the same path will work for both your testing environment and the actual module (Wally originally located Packages outside the module, which would result in issues with relative file paths, as `require("packages/x")` would work in the testing environment but not in the actual module).
 - Requires now use relative file paths.
 - The `_Index` folder is now called `_index` to respect the naming convention.

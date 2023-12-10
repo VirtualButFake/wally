@@ -36,14 +36,10 @@ pub struct Resolve {
 }
 
 impl Resolve {
-    fn activate(&mut self, source: PackageId, dep_name: String, dep_realm: Realm, dep: PackageId) {
+    fn activate(&mut self, source: PackageId, dep_name: String, dep: PackageId) {
         self.activated.insert(dep.clone());
 
-        let dependencies = match dep_realm {
-            Realm::Shared => self.shared_dependencies.entry(source).or_default(),
-            Realm::Server => self.server_dependencies.entry(source).or_default(),
-            Realm::Dev => self.dev_dependencies.entry(source).or_default(),
-        };
+        let dependencies = self.shared_dependencies.entry(source).or_default();
         dependencies.insert(dep_name, dep);
     }
 }
@@ -91,24 +87,20 @@ pub fn resolve(
         });
     }
 
-    for (alias, req) in &root_manifest.server_dependencies {
-        packages_to_visit.push_back(DependencyRequest {
-            request_source: root_manifest.package_id(),
-            request_realm: Realm::Server,
-            origin_realm: Realm::Server,
-            package_alias: alias.clone(),
-            package_req: req.clone(),
-        });
+    for (_, req) in &root_manifest.server_dependencies {
+        log::error!(
+            "Package {} has a server dependency on {}. Server dependencies are not supported in this fork.",
+            root_manifest.package_id(),
+            req
+        );
     }
 
-    for (alias, req) in &root_manifest.dev_dependencies {
-        packages_to_visit.push_back(DependencyRequest {
-            request_source: root_manifest.package_id(),
-            request_realm: Realm::Dev,
-            origin_realm: Realm::Dev,
-            package_alias: alias.clone(),
-            package_req: req.clone(),
-        });
+    for (_, req) in &root_manifest.dev_dependencies {
+        log::error!(
+            "Package {} has a dev dependency on {}. Dev dependencies are not supported in this fork.",
+            root_manifest.package_id(),
+            req
+        );
     }
 
     // Workhorse loop: resolve all dependencies, depth-first.
@@ -130,33 +122,9 @@ pub fn resolve(
         // our constraints.
         for package_id in &matching_activated {
             if dependency_request.package_req.matches_id(package_id) {
-                let metadata = resolve
-                    .metadata
-                    .get_mut(package_id)
-                    .expect("activated package was missing metadata");
-
-                // [ origin_realm clarification ]
-                // We want to set the origin to the most restrictive origin possible.
-                // For example we want to keep packages in the dev realm unless a dependency
-                // with a shared/server origin requires it. This way server/shared dependencies
-                // which only originate from dev dependencies get put into the dev folder even
-                // if they usually belong to another realm. Likewise we want to keep shared
-                // dependencies in the server realm unless they are explicitly required as a
-                // shared dependency.
-                let realm_match = match (metadata.origin_realm, dependency_request.origin_realm) {
-                    (_, Realm::Shared) => Realm::Shared,
-                    (Realm::Shared, _) => Realm::Shared,
-                    (_, Realm::Server) => Realm::Server,
-                    (Realm::Server, _) => Realm::Server,
-                    (Realm::Dev, Realm::Dev) => Realm::Dev,
-                };
-
-                metadata.origin_realm = realm_match;
-
-                resolve.activate(
+                 resolve.activate(
                     dependency_request.request_source.clone(),
                     dependency_request.package_alias.clone(),
-                    realm_match,
                     package_id.clone(),
                 );
 
@@ -235,7 +203,6 @@ pub fn resolve(
             resolve.activate(
                 dependency_request.request_source.clone(),
                 dependency_request.package_alias.to_owned(),
-                dependency_request.origin_realm,
                 candidate_id.clone(),
             );
 
