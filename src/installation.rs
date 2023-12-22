@@ -209,15 +209,21 @@ impl InstallationContext {
             let archive = ZipArchive::new(Cursor::new(file.data()))?;
 
             // check if this archive contains either init.luau, init.lua, src/init.luau or src/init.lua, in that order.
+            // we need seperate cases for *.lua, lune doesn't require the .lua extension by default
             let mut suffix = None;
 
             for file_name in archive.file_names() {
-                if file_name == "init.luau" || file_name == "init.lua" {
+                if file_name == "init.luau" {
                     suffix = Some("");
                     break;
-                } else if file_name == "src/init.luau" || file_name == "src/init.lua" {
+                } else if file_name == "init.lua" {
+                    suffix = Some("/init.lua");
+                    break
+                } else if file_name == "src/init.luau" {
                     suffix = Some("/src");
                     // don't break here, we want to prioritize files in the root of the archive
+                } else if file_name == "src/init.lua" {
+                    suffix = Some("/src/init.lua");
                 }
             }
 
